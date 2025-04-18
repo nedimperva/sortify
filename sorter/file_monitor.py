@@ -6,6 +6,7 @@ import time
 import logging
 import threading
 from pathlib import Path
+from datetime import datetime, timedelta
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -66,7 +67,7 @@ class DownloadHandler(FileSystemEventHandler):
 class FileMonitor:
     """
     Monitors the downloads directory for new files.
-    Starts a background thread to process detected files.
+    Supports both regular monitoring and scheduled scanning.
     """
     def __init__(self):
         self.logger = logging.getLogger("FileMonitor")
@@ -76,34 +77,170 @@ class FileMonitor:
         self.running = False
         self.stop_event = threading.Event()
         self.process_thread = None
+        self.scheduler_thread = None
+        self.last_scan_time = None
+        self.missed_schedules = []
         
     def start(self):
-        """Start monitoring the downloads directory"""
+        """Start the appropriate monitoring mode based on config"""
         if self.running:
             self.logger.info("File monitor already running")
             return
             
-        # Create a new observer instance
+        # Reset stop event if needed
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+            
+        scan_mode = self.config.get("scan_mode", "regular")
+        self.running = True
+        
+        if scan_mode == "regular":
+            self._start_regular_monitoring()
+        else:  # scheduled mode
+            self._start_scheduled_monitoring()
+            
+        self.logger.info(f"Started file monitor in {scan_mode} mode")
+        
+    def _start_regular_monitoring(self):
+        """Start continuous file monitoring using watchdog"""
+        # Create a new observer instance for regular monitoring
         self.observer = Observer()
         
         downloads_path = Path(self.config.get("source_folder", str(Path.home() / "Downloads")))
         self.observer.schedule(self.handler, str(downloads_path), recursive=False)
         
-        # Reset stop event if needed
-        if self.stop_event.is_set():
-            self.stop_event.clear()
-            
         self.observer.start()
-        self.running = True
-        self.logger.info(f"Started monitoring: {downloads_path}")
         
         # Start processing thread
         self.process_thread = threading.Thread(target=self._process_loop)
         self.process_thread.daemon = True
         self.process_thread.start()
+            
+    def _start_scheduled_monitoring(self):
+        """Start scheduled monitoring mode"""
+        # Start the scheduler thread
+        self.scheduler_thread = threading.Thread(target=self._scheduler_loop)
+        self.scheduler_thread.daemon = True
+        self.scheduler_thread.start()
+        
+        # Check for missed scans if coming back online
+        if self.config.get("scan_when_back_online", True):
+            self._check_missed_schedules()
+            
+    def _scheduler_loop(self):
+        """Background loop to run scheduled scans"""
+        while not self.stop_event.is_set():
+            # Check if current time matches any scheduled time
+            current_time = datetime.now()
+            scheduled_times = self.config.get("scheduled_times", [])
+            
+            for time_str in scheduled_times:
+                try:
+                    # Parse scheduled time
+                    hour, minute = map(int, time_str.split(':'))
+                    scheduled_time = current_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    
+                    # If current time is within 59 seconds of scheduled time and we haven't run yet
+                    time_diff = abs((current_time - scheduled_time).total_seconds())
+                    
+                    if time_diff < 60 and (self.last_scan_time is None or 
+                                          (current_time - self.last_scan_time).total_seconds() > 60):
+                        self._run_scheduled_scan()
+                        # Update last scan time
+                        self.last_scan_time = current_time
+                        # Add to list of completed schedules
+                        self._add_completed_schedule(scheduled_time)
+                        break
+                except Exception as e:
+                    self.logger.error(f"Error processing scheduled scan at {time_str}: {e}")
+            
+            # Sleep for 30 seconds before next check
+            time.sleep(30)
+            
+    def _run_scheduled_scan(self):
+        """Run a scheduled scan of the source directory"""
+        self.logger.info("Running scheduled scan")
+        source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
+        
+        try:
+            # Use the file sorter to sort the entire directory
+            sorter = FileSorter()
+            success_count, error_count = sorter.sort_directory(source_folder)
+            self.logger.info(f"Scheduled scan completed: {success_count} files sorted, {error_count} errors")
+        except Exception as e:
+            self.logger.error(f"Error during scheduled scan: {e}")
+            
+    def _check_missed_schedules(self):
+        """Check for any scheduled scans that were missed while offline"""
+        if not self.config.get("scan_when_back_online", True):
+            return
+            
+        current_time = datetime.now()
+        scheduled_times = self.config.get("scheduled_times", [])
+        completed_schedules = self.config.get("completed_schedules", [])
+        
+        # Get the most recent completed schedule time
+        last_completed = None
+        if completed_schedules:
+            try:
+                last_completed = datetime.fromisoformat(completed_schedules[-1])
+            except (ValueError, IndexError):
+                pass
+                
+        # If we have no record of completed schedules, don't try to catch up
+        if not last_completed:
+            return
+            
+        # Check each scheduled time to see if we missed any
+        for time_str in scheduled_times:
+            try:
+                # Parse scheduled time
+                hour, minute = map(int, time_str.split(':'))
+                
+                # Check if there was a scheduled time between our last scan and now
+                for days_ago in range(1, 8):  # Check up to a week back
+                    check_date = current_time - timedelta(days=days_ago)
+                    scheduled_datetime = check_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    
+                    # If this scheduled time was after our last completion but before now,
+                    # and we haven't already run it, then we missed it
+                    if (last_completed < scheduled_datetime < current_time and 
+                        scheduled_datetime.isoformat() not in completed_schedules):
+                        self.missed_schedules.append(scheduled_datetime)
+            except Exception as e:
+                self.logger.error(f"Error checking for missed schedule {time_str}: {e}")
+                
+        # Run a scan now if we missed any schedules
+        if self.missed_schedules:
+            self.logger.info(f"Detected {len(self.missed_schedules)} missed scans, running catch-up scan now")
+            self._run_scheduled_scan()
+            # Mark all as completed
+            for missed in self.missed_schedules:
+                self._add_completed_schedule(missed)
+            self.missed_schedules = []
+            
+    def _add_completed_schedule(self, scheduled_time):
+        """Add a completed schedule to the tracking list"""
+        if "completed_schedules" not in self.config:
+            self.config["completed_schedules"] = []
+            
+        # Convert to ISO format string
+        time_str = scheduled_time.isoformat()
+        
+        # Add to completed schedules
+        if time_str not in self.config["completed_schedules"]:
+            self.config["completed_schedules"].append(time_str)
+            
+        # Keep only last 50 completed schedules
+        if len(self.config["completed_schedules"]) > 50:
+            self.config["completed_schedules"] = self.config["completed_schedules"][-50:]
+            
+        # Save the updated config
+        from .utils import save_config
+        save_config(self.config)
         
     def stop(self):
-        """Stop monitoring the downloads directory"""
+        """Stop all monitoring"""
         if self.running:
             self.stop_event.set()
             if self.observer:
@@ -122,3 +259,14 @@ class FileMonitor:
     def is_running(self):
         """Check if the monitor is currently running"""
         return self.running
+        
+    def scan_now(self):
+        """Run a manual scan"""
+        if self.running:
+            return self._run_scheduled_scan()
+        else:
+            # If not running, start temporarily for a one-time scan
+            self.logger.info("Running one-time scan")
+            source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
+            sorter = FileSorter()
+            return sorter.sort_directory(source_folder)

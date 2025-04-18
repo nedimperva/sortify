@@ -5,10 +5,11 @@ import os
 import customtkinter as ctk
 from pathlib import Path
 from PIL import Image, ImageTk
-from datetime import datetime
+from datetime import datetime, time
 import threading
 import tkinter as tk
 import math
+from tkinter import messagebox
 
 from sorter.file_sorter import FileSorter
 from sorter.stats import SortingStats
@@ -352,6 +353,58 @@ class MainWindow(ctk.CTk):
         notify_cb = ctk.CTkCheckBox(options_frame, text="Show notifications", variable=self.notify_var)
         notify_cb.grid(row=0, column=1, padx=5, pady=5, sticky="w")
         
+        # Scan schedule section
+        schedule_frame = ctk.CTkFrame(behavior_section, fg_color="transparent")
+        schedule_frame.pack(fill="x", padx=15, pady=(10, 5))
+        
+        ctk.CTkLabel(schedule_frame, text="Folder Scan Schedule:", 
+                   font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(5, 10))
+        
+        # Scan mode options
+        scan_options_frame = ctk.CTkFrame(schedule_frame, fg_color="transparent")
+        scan_options_frame.pack(fill="x", padx=5, pady=5)
+        
+        self.scan_mode_var = ctk.StringVar(value=self.config.get("scan_mode", "regular"))
+        
+        regular_rb = ctk.CTkRadioButton(scan_options_frame, text="Regular monitoring", 
+                                     variable=self.scan_mode_var, value="regular",
+                                     command=self.toggle_schedule_options)
+        regular_rb.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        
+        scheduled_rb = ctk.CTkRadioButton(scan_options_frame, text="Scheduled scans", 
+                                       variable=self.scan_mode_var, value="scheduled",
+                                       command=self.toggle_schedule_options)
+        scheduled_rb.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        
+        # Schedule times container (initially hidden if in regular mode)
+        self.schedule_times_frame = ctk.CTkFrame(schedule_frame, fg_color="transparent")
+        self.schedule_times_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Time slots management
+        time_header_frame = ctk.CTkFrame(self.schedule_times_frame, fg_color="transparent")
+        time_header_frame.pack(fill="x", pady=(5, 0))
+        
+        ctk.CTkLabel(time_header_frame, text="Scheduled Scan Times:").pack(side="left")
+        
+        add_time_btn = ctk.CTkButton(time_header_frame, text="Add Time", width=100, height=24,
+                                   command=self.add_scheduled_time)
+        add_time_btn.pack(side="right")
+        
+        # Container for time slots
+        self.time_slots_frame = ctk.CTkScrollableFrame(self.schedule_times_frame, height=100)
+        self.time_slots_frame.pack(fill="x", pady=5)
+        
+        # Offline recovery option
+        self.offline_recovery_var = ctk.BooleanVar(value=self.config.get("scan_when_back_online", True))
+        offline_cb = ctk.CTkCheckBox(self.schedule_times_frame, 
+                                   text="Perform scan when computer comes back online if a scheduled scan was missed",
+                                   variable=self.offline_recovery_var)
+        offline_cb.pack(anchor="w", pady=5)
+        
+        # Initialize the schedule UI based on current mode
+        self.toggle_schedule_options()
+        self.load_scheduled_times()
+        
         # Categories section
         categories_section = ctk.CTkFrame(settings_scroll)
         categories_section.pack(fill="x", padx=0, pady=(0, 15))
@@ -523,6 +576,10 @@ class MainWindow(ctk.CTk):
         self.config["run_at_startup"] = self.startup_var.get()
         self.config["show_notifications"] = self.notify_var.get()
         
+        # Save scan schedule settings
+        self.config["scan_mode"] = self.scan_mode_var.get()
+        self.config["scan_when_back_online"] = self.offline_recovery_var.get()
+        
         # Save config
         from sorter.utils import save_config, set_run_at_startup
         save_config(self.config)
@@ -532,6 +589,8 @@ class MainWindow(ctk.CTk):
         if self.file_monitor and self.file_monitor.is_running():
             self.file_monitor.stop()
             self.file_monitor.start()
+            
+        messagebox.showinfo("Settings Saved", "Your settings have been saved successfully.")
     
     def browse_source(self):
         """Browse for source folder"""
@@ -603,7 +662,7 @@ class MainWindow(ctk.CTk):
         # Get recent activity data
         recent_activity = self.stats.get_recent_activity(limit=10)
         
-        if recent_activity:
+        if (recent_activity):
             for activity in recent_activity:
                 self.add_activity_item(
                     self.activity_list,
@@ -837,3 +896,87 @@ class MainWindow(ctk.CTk):
         else:
             # Return a light color for light mode
             return "#f0f0f0"  # Or another appropriate light color
+
+    def toggle_schedule_options(self):
+        """Show or hide schedule options based on selected scan mode"""
+        scan_mode = self.scan_mode_var.get()
+        
+        if scan_mode == "scheduled":
+            self.schedule_times_frame.pack(fill="x", padx=5, pady=5)
+        else:
+            self.schedule_times_frame.pack_forget()
+            
+    def add_scheduled_time(self):
+        """Add a new scheduled scan time"""
+        from tkinter import simpledialog
+        
+        # Show time picker dialog
+        time_str = simpledialog.askstring("Add Scheduled Time", 
+                                        "Enter time (24-hour format, HH:MM):",
+                                        initialvalue="12:00")
+        
+        if time_str:
+            try:
+                # Validate time format
+                hour, minute = map(int, time_str.split(':'))
+                if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                    messagebox.showerror("Invalid Time", "Please enter a valid time in 24-hour format (HH:MM)")
+                    return
+                    
+                # Format time properly
+                formatted_time = f"{hour:02d}:{minute:02d}"
+                
+                # Add to config if not already exists
+                if "scheduled_times" not in self.config:
+                    self.config["scheduled_times"] = []
+                
+                if formatted_time not in self.config["scheduled_times"]:
+                    self.config["scheduled_times"].append(formatted_time)
+                    self.refresh_time_slots()
+            except ValueError:
+                messagebox.showerror("Invalid Format", "Please enter time in HH:MM format")
+    
+    def load_scheduled_times(self):
+        """Load scheduled times from config"""
+        self.refresh_time_slots()
+    
+    def refresh_time_slots(self):
+        """Refresh the time slots UI"""
+        # Clear existing time slots
+        for widget in self.time_slots_frame.winfo_children():
+            widget.destroy()
+        
+        # Add time slots from config
+        scheduled_times = sorted(self.config.get("scheduled_times", []))
+        
+        if not scheduled_times:
+            # Show placeholder when no times are scheduled
+            placeholder = ctk.CTkFrame(self.time_slots_frame, height=30, fg_color="transparent")
+            placeholder.pack(fill="x", pady=5)
+            ctk.CTkLabel(placeholder, text="No scheduled times set", 
+                       text_color=("gray40", "gray60")).pack(pady=10)
+        else:
+            for time_str in scheduled_times:
+                self.create_time_slot_item(time_str)
+    
+    def create_time_slot_item(self, time_str):
+        """Create a time slot item in UI"""
+        slot_frame = ctk.CTkFrame(self.time_slots_frame, fg_color=("gray90", "gray20"))
+        slot_frame.pack(fill="x", pady=3)
+        
+        # Time display
+        ctk.CTkLabel(slot_frame, text=time_str, 
+                   font=ctk.CTkFont(weight="bold")).pack(side="left", padx=15, pady=8)
+        
+        # Delete button
+        delete_btn = ctk.CTkButton(slot_frame, text="×", width=24, height=24, 
+                                 fg_color="transparent", text_color=("gray40", "gray60"),
+                                 hover_color=("gray70", "gray30"),
+                                 command=lambda t=time_str: self.remove_scheduled_time(t))
+        delete_btn.pack(side="right", padx=(5, 10), pady=8)
+    
+    def remove_scheduled_time(self, time_str):
+        """Remove a scheduled time"""
+        if "scheduled_times" in self.config and time_str in self.config["scheduled_times"]:
+            self.config["scheduled_times"].remove(time_str)
+            self.refresh_time_slots()
