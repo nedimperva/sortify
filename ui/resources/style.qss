@@ -1,0 +1,158 @@
+/* Sortify - Modern Qt Style Sheet */
+
+/* Global styles */
+QWidget {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 10pt;
+}
+
+/* Main window */
+QMainWindow {
+    background-color: #f5f5f5;
+}
+
+/* Sidebar styling */
+#sidebar {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    min-width: 200px;
+    padding: 0px;
+}
+
+#sidebar QPushButton {
+    border: none;
+    text-align: left;
+    padding: 12px 15px;
+    color: #ecf0f1;
+    font-size: 11pt;
+    background-color: transparent;
+}
+
+#sidebar QPushButton:hover {
+    background-color: #34495e;
+}
+
+#sidebar QPushButton:checked, 
+#sidebar QPushButton:pressed {
+    background-color: #3498db;
+    color: white;
+}
+
+#logo {
+    font-size: 24pt;
+    font-weight: bold;
+    color: #3498db;
+    padding: 20px;
+}
+
+/* Dashboard styling */
+QFrame.card {
+    background-color: white;
+    border-radius: 5px;
+    border: 1px solid #e0e0e0;
+}
+
+QFrame.card QLabel {
+    color: #333;
+}
+
+QFrame.card QLabel[title="true"] {
+    font-size: 9pt;
+    color: #777;
+}
+
+QFrame.card QLabel[value="true"] {
+    font-size: 18pt;
+    font-weight: bold;
+    color: #2980b9;
+}
+
+/* Activity items */
+QFrame.activity-item {
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+    padding: 8px;
+    margin: 2px 0;
+}
+
+QFrame.activity-item QLabel[filename="true"] {
+    font-weight: bold;
+    color: #333;
+}
+
+QFrame.activity-item QLabel[details="true"] {
+    color: #777;
+    font-size: 9pt;
+}
+
+/* Settings styling */
+QLineEdit, QComboBox, QSpinBox {
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+}
+
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
+    border-color: #3498db;
+}
+
+QPushButton {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+QPushButton:hover {
+    background-color: #2980b9;
+}
+
+QPushButton:pressed {
+    background-color: #1c6ea4;
+}
+
+QPushButton[secondary="true"] {
+    background-color: #e0e0e0;
+    color: #333;
+}
+
+QPushButton[secondary="true"]:hover {
+    background-color: #d0d0d0;
+}
+
+/* Category items styling */
+QFrame.category-item {
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+    padding: 8px;
+}
+
+/* Headers */
+QLabel[header="true"] {
+    font-size: 16pt;
+    font-weight: bold;
+    color: #2c3e50;
+    padding-bottom: 10px;
+}
+
+QLabel[section="true"] {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #2c3e50;
+    padding: 10px 0px;
+}
+
+/* Status bar */
+QFrame#statusBar {
+    background-color: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* Charts styling */
+QChartView {
+    background-color: transparent;
+}

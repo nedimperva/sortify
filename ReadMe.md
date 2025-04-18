@@ -8,9 +8,9 @@
 
 - **Automatic Sorting**: Files are instantly categorized by month and type
 - **Custom Categories**: Define your own file categories and extensions
-- **Modern UI**: Clean, minimalist interface with light and dark mode support
+- **Modern UI**: Clean, native interface with light and dark mode support
 - **System Tray**: Runs silently in the background with minimal resource usage
-- **Detailed Statistics**: Track your download habits with visual reports
+- **Interactive Charts**: Track your download habits with visual reports
 - **Customizable**: Configure source/destination folders and sorting rules
 
 ## 📊 File Organization Structure
@@ -52,6 +52,7 @@ Downloads/
 
 - Windows 10/11
 - Python 3.8 or higher (for manual installation)
+- PyQt6 (automatically installed with requirements.txt)
 - Administrative privileges (for automatic startup configuration)
 
 ## 📝 Usage
@@ -64,7 +65,7 @@ Downloads/
 
 ## ⚙️ Configuration
 
-Sortify stores its configuration in `%APPDATA%\Sortify\config.json`. This file can be edited manually if needed, but it's recommended to use the Settings interface within the app.
+Sortify stores its configuration in `%USERPROFILE%\.sortify\config.json`. This file can be edited manually if needed, but it's recommended to use the Settings interface within the app.
 
 ## 🛠️ Development
 
@@ -80,7 +81,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install development dependencies
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 ```
 
 ### Project Structure
@@ -88,11 +89,16 @@ pip install -r requirements-dev.txt
 ```
 sortify/
 ├── main.py                # Entry point
-├── config.json            # User configuration
 ├── sorter/                # Backend sorting logic
+│   ├── file_monitor.py    # File system monitoring
+│   ├── file_sorter.py     # File sorting logic
+│   ├── stats.py           # Statistics tracking
+│   └── utils.py           # Utility functions
 ├── ui/                    # UI components
-├── tests/                 # Test suite
-└── resources/             # Icons and assets
+│   ├── main_window.py     # Main application window
+│   ├── tray_icon.py       # System tray integration
+│   └── resources/         # Icons and stylesheet
+└── tests/                 # Test suite
 ```
 
 ### Running Tests
@@ -105,7 +111,7 @@ pytest tests/
 
 ```bash
 # Using PyInstaller
-pyinstaller --onefile --windowed --icon=resources/icon.ico main.py
+pyinstaller --onefile --windowed --icon=ui/resources/sortify_icon.png main.py
 ```
 
 ## 🤝 Contributing
@@ -124,7 +130,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgements
 
-- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) - Modern UI components
+- [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - Modern UI framework
 - [Watchdog](https://github.com/gorakhargosh/watchdog) - File system monitoring
 - [PyInstaller](https://github.com/pyinstaller/pyinstaller) - Application packaging
 

@@ -2,9 +2,11 @@
 System tray integration for Sortify application.
 """
 import os
-import pystray
-from PIL import Image
 from pathlib import Path
+from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+from PyQt6.QtGui import QIcon, QPixmap, QAction
+from PyQt6.QtCore import Qt
+from datetime import datetime
 
 class SortifyTrayIcon:
     """
@@ -14,73 +16,162 @@ class SortifyTrayIcon:
     def __init__(self, app_instance, file_monitor=None):
         self.app_instance = app_instance
         self.file_monitor = file_monitor
-        self.icon = None
+        self.tray_icon = None
         self._create_icon()
         
     def _create_icon(self):
         """Create the system tray icon with menu"""
-        # Use a colored square as a fallback icon
-        icon_image = Image.new('RGB', (64, 64), color="#3498db")
-        
         # Try to load an icon file if available
         icon_path = Path(__file__).parent / "resources" / "sortify_icon.png"
         if icon_path.exists():
             try:
-                icon_image = Image.open(icon_path)
+                icon = QIcon(str(icon_path))
             except Exception:
-                pass
+                # Use a colored icon as fallback
+                pixmap = QPixmap(64, 64)
+                pixmap.fill(Qt.GlobalColor.blue)
+                icon = QIcon(pixmap)
+        else:
+            # Use a colored icon as fallback
+            pixmap = QPixmap(64, 64)
+            pixmap.fill(Qt.GlobalColor.blue)
+            icon = QIcon(pixmap)
                 
-        self.icon = pystray.Icon("sortify", 
-                                icon_image, 
-                                "Sortify", 
-                                menu=self._create_menu())
+        # Create system tray icon
+        self.tray_icon = QSystemTrayIcon()
+        self.tray_icon.setIcon(icon)
+        self.tray_icon.setToolTip("Sortify")
+        
+        # Create menu
+        self._create_menu()
                                 
     def _create_menu(self):
         """Create the tray icon context menu"""
-        return pystray.Menu(
-            pystray.MenuItem("Open Sortify", self._show_window),
-            pystray.MenuItem("Sort Now", self._sort_now),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Pause/Resume", self._toggle_service, checked=lambda item: self._is_active()),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Exit", self._exit_app)
-        )
+        menu = QMenu()
         
-    def _show_window(self, icon, item):
-        """Show the main application window"""
-        self.app_instance.deiconify()
-        self.app_instance.lift()
-        self.app_instance.focus_force()
+        # Show the app status at the top of the menu
+        self.status_action = QAction("Status: Ready", self.tray_icon)
+        self.status_action.setEnabled(False)
+        menu.addAction(self.status_action)
+
+        # Add a separator after status
+        menu.addSeparator()
+        
+        # Open Sortify
+        open_action = QAction("Open Sortify", self.tray_icon)
+        open_action.triggered.connect(self._show_window)
+        menu.addAction(open_action)
+        
+        # Sort Now
+        sort_now_action = QAction("Sort Now", self.tray_icon)
+        sort_now_action.triggered.connect(self._sort_now)
+        menu.addAction(sort_now_action)
+        
+        menu.addSeparator()
+        
+        # Toggle monitoring (Pause/Resume)
+        self.toggle_action = QAction("", self.tray_icon)
+        self.toggle_action.setCheckable(True)
+        self.toggle_action.setChecked(self._is_active())
+        self.toggle_action.triggered.connect(self._toggle_service)
+        
+        # Set the initial text based on state
+        if self._is_active():
+            self.toggle_action.setText("Pause Monitoring")
+            # Also update the status action
+            self._update_status("Active")
+        else:
+            self.toggle_action.setText("Resume Monitoring")
+            self._update_status("Paused")
+            
+        menu.addAction(self.toggle_action)
+        
+        # Theme submenu
+        theme_menu = QMenu("Theme", menu)
+        
+        theme_system = QAction("System", theme_menu)
+        theme_system.triggered.connect(lambda: self._change_theme("System"))
+        theme_menu.addAction(theme_system)
+        
+        theme_light = QAction("Light", theme_menu)
+        theme_light.triggered.connect(lambda: self._change_theme("Light"))
+        theme_menu.addAction(theme_light)
+        
+        theme_dark = QAction("Dark", theme_menu)
+        theme_dark.triggered.connect(lambda: self._change_theme("Dark"))
+        theme_menu.addAction(theme_dark)
+        
+        menu.addMenu(theme_menu)
+        
+        menu.addSeparator()
+        
+        # Exit
+        exit_action = QAction("Exit", self.tray_icon)
+        exit_action.triggered.connect(self._exit_app)
+        menu.addAction(exit_action)
+        
+        self.tray_icon.setContextMenu(menu)
+        
+    def _update_status(self, status_text, details=None):
+        """Update status text in tray menu"""
+        if not hasattr(self, 'status_action'):
+            return
+            
+        if details:
+            self.status_action.setText(f"Status: {status_text} | {details}")
+        else:
+            self.status_action.setText(f"Status: {status_text}")
     
-    def _sort_now(self, icon, item):
+    def _show_window(self):
+        """Show the main application window"""
+        self.app_instance.show()
+        self.app_instance.activateWindow()
+        self.app_instance.raise_()
+    
+    def _sort_now(self):
         """Trigger manual sort"""
         if hasattr(self.app_instance, 'sort_now'):
             self.app_instance.sort_now()
+            # Update the status to show sorting occurred
+            current_time = datetime.now().strftime('%H:%M:%S')
+            self._update_status("Active", f"Last sort: {current_time}")
     
-    def _toggle_service(self, icon, item):
+    def _toggle_service(self):
         """Toggle the monitoring service on/off"""
         if hasattr(self.app_instance, 'toggle_service'):
             self.app_instance.toggle_service()
+            
+            # Update toggle action text based on new state
+            if self._is_active():
+                self.toggle_action.setText("Pause Monitoring")
+                self._update_status("Active")
+            else:
+                self.toggle_action.setText("Resume Monitoring")
+                self._update_status("Paused")
         
     def _is_active(self):
         """Check if monitoring service is active"""
         try:
             if hasattr(self.app_instance, 'toggle_button'):
-                return self.app_instance.toggle_button.get()
+                return self.app_instance.toggle_button.isChecked()
         except:
             pass
         return True
     
-    def _exit_app(self, icon, item):
+    def _change_theme(self, theme):
+        """Change the app theme"""
+        if hasattr(self.app_instance, 'change_appearance_mode'):
+            self.app_instance.change_appearance_mode(theme)
+    
+    def _exit_app(self):
         """Exit the application completely"""
-        icon.stop()
         self.app_instance.quit_app()
     
     def run(self):
-        """Run the tray icon in a separate thread"""
-        self.icon.run_detached()
+        """Show the tray icon"""
+        self.tray_icon.show()
 
     def stop(self):
-        """Stop the tray icon"""
-        if self.icon:
-            self.icon.stop()
+        """Hide the tray icon"""
+        if self.tray_icon:
+            self.tray_icon.hide()

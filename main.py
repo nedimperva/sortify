@@ -5,7 +5,7 @@ A modern, minimalist application to automatically organize your downloads folder
 import sys
 import logging
 from pathlib import Path
-import customtkinter as ctk
+from PyQt6.QtWidgets import QApplication
 from sorter.utils import setup_logging
 from sorter.file_monitor import FileMonitor
 from ui.main_window import MainWindow
@@ -20,11 +20,12 @@ def main():
     file_monitor = FileMonitor()
     
     # Create the GUI application
-    ctk.set_appearance_mode("system")
-    ctk.set_default_color_theme("blue")
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')  # Use Fusion style for consistent cross-platform look
     
     # Create and show the main window
-    app = MainWindow(file_monitor=file_monitor)
+    window = MainWindow(file_monitor=file_monitor)
+    window.show()
     
     # Start file monitoring
     file_monitor.start()
@@ -32,7 +33,7 @@ def main():
     
     # Run the application
     # The application will now minimize to system tray when closed
-    app.mainloop()
+    exit_code = app.exec()
     
     # Cleanup on exit
     if file_monitor.is_running():
@@ -40,6 +41,7 @@ def main():
         logger.info("File monitoring stopped")
         
     logger.info("Application terminated")
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()
