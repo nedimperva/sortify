@@ -161,15 +161,20 @@ class FileMonitor:
         """Run a scheduled scan of the source directory"""
         self.logger.info("Running scheduled scan")
         source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
-        
+        success_count = 0 # Initialize counts
+        error_count = 0   # Initialize counts
+
         try:
             # Use the file sorter to sort the entire directory
             sorter = FileSorter()
-            success_count, error_count = sorter.sort_directory(source_folder)
+            success_count, error_count = sorter.sort_directory(source_folder) # Get the counts
             self.logger.info(f"Scheduled scan completed: {success_count} files sorted, {error_count} errors")
         except Exception as e:
             self.logger.error(f"Error during scheduled scan: {e}")
-            
+            # error_count might be implicitly 0 here, or could be set if needed
+
+        return success_count, error_count # Return the counts
+
     def _check_missed_schedules(self):
         """Check for any scheduled scans that were missed while offline"""
         if not self.config.get("scan_when_back_online", True):
@@ -261,12 +266,18 @@ class FileMonitor:
         return self.running
         
     def scan_now(self):
-        """Run a manual scan"""
+        """Run a manual scan and return results"""
+        source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
+        if not Path(source_folder).exists():
+            self.logger.error(f"Source folder for scan_now not found: {source_folder}")
+            return 0, 0 # Return zero counts if folder doesn't exist
+
         if self.running:
+            # If monitor is running, use _run_scheduled_scan which now returns counts
+            self.logger.info("Running manual scan via _run_scheduled_scan")
             return self._run_scheduled_scan()
         else:
-            # If not running, start temporarily for a one-time scan
-            self.logger.info("Running one-time scan")
-            source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
+            # If not running, perform a one-time scan directly
+            self.logger.info("Running one-time manual scan")
             sorter = FileSorter()
             return sorter.sort_directory(source_folder)

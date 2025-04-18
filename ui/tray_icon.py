@@ -44,7 +44,7 @@ class SortifyTrayIcon:
         
         # Create menu
         self._create_menu()
-                                
+                                 
     def _create_menu(self):
         """Create the tray icon context menu"""
         menu = QMenu()
@@ -111,6 +111,17 @@ class SortifyTrayIcon:
         menu.addAction(exit_action)
         
         self.tray_icon.setContextMenu(menu)
+
+    def update_toggle_state(self, is_active):
+        """Update the toggle action's text and checked state from the main window."""
+        if hasattr(self, 'toggle_action'):
+            self.toggle_action.setChecked(is_active)
+            if is_active:
+                self.toggle_action.setText("Pause Monitoring")
+                self._update_status("Active")
+            else:
+                self.toggle_action.setText("Resume Monitoring")
+                self._update_status("Paused")
         
     def _update_status(self, status_text, details=None):
         """Update status text in tray menu"""
@@ -139,16 +150,13 @@ class SortifyTrayIcon:
     def _toggle_service(self):
         """Toggle the monitoring service on/off"""
         if hasattr(self.app_instance, 'toggle_service'):
+            was_checked = self.app_instance.toggle_button.isChecked()
             self.app_instance.toggle_service()
-            
-            # Update toggle action text based on new state
-            if self._is_active():
-                self.toggle_action.setText("Pause Monitoring")
-                self._update_status("Active")
-            else:
-                self.toggle_action.setText("Resume Monitoring")
-                self._update_status("Paused")
-        
+            # Toggle the checkbox state, which triggers the main window's toggle_service
+            self.app_instance.toggle_button.setChecked(not was_checked)
+            # The main window's toggle_service will call back update_toggle_state
+            # So no need to update text/status directly here anymore.
+
     def _is_active(self):
         """Check if monitoring service is active"""
         try:
@@ -169,6 +177,13 @@ class SortifyTrayIcon:
     
     def run(self):
         """Show the tray icon"""
+        # Set initial state now that app_instance should be ready
+        is_active = self._is_active()
+        self.toggle_action.setChecked(is_active)
+        self.toggle_action.triggered.connect(self._toggle_service) # Connect signal here
+        # Call update_toggle_state to set initial text and status correctly
+        self.update_toggle_state(is_active)
+
         self.tray_icon.show()
 
     def stop(self):

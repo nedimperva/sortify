@@ -1,0 +1,181 @@
+/* Sortify - Dark Qt Style Sheet */
+
+/* Global styles */
+QWidget {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 10pt;
+    color: #dddddd; /* Default text color for dark theme */
+}
+
+/* Main window */
+QMainWindow {
+    background-color: #2d2d2d;
+}
+
+/* Sidebar styling */
+#sidebar {
+    background-color: #1e1e1e;
+    color: #cccccc;
+    min-width: 200px;
+    padding: 0px;
+}
+
+#sidebar QPushButton {
+    border: none;
+    text-align: left;
+    padding: 12px 15px;
+    color: #cccccc;
+    font-size: 11pt;
+    background-color: transparent;
+}
+
+#sidebar QPushButton:hover {
+    background-color: #333333;
+}
+
+#sidebar QPushButton:checked,
+#sidebar QPushButton:pressed {
+    background-color: #007acc; /* Dark theme accent */
+    color: white;
+}
+
+#logo {
+    font-size: 24pt;
+    font-weight: bold;
+    color: #007acc; /* Dark theme accent */
+    padding: 20px;
+}
+
+/* Dashboard styling */
+QFrame.card {
+    background-color: #3c3c3c;
+    border-radius: 5px;
+    border: 1px solid #555555;
+}
+
+QFrame.card QLabel {
+    color: #dddddd;
+}
+
+QFrame.card QLabel[title="true"] {
+    font-size: 9pt;
+    color: #aaaaaa;
+}
+
+QFrame.card QLabel[value="true"] {
+    font-size: 18pt;
+    font-weight: bold;
+    color: #4fc3f7; /* Lighter blue for dark theme */
+}
+
+/* Activity items */
+QFrame.activity-item {
+    background-color: #3c3c3c;
+    border-radius: 4px;
+    border: 1px solid #555555;
+    padding: 8px;
+    margin: 2px 0;
+}
+
+QFrame.activity-item QLabel[filename="true"] {
+    font-weight: bold;
+    color: #dddddd;
+}
+
+QFrame.activity-item QLabel[details="true"] {
+    color: #aaaaaa;
+    font-size: 9pt;
+}
+
+/* Settings styling */
+QLineEdit, QComboBox, QSpinBox {
+    padding: 6px;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    background-color: #2d2d2d;
+    color: #dddddd;
+}
+
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
+    border-color: #007acc; /* Dark theme accent */
+}
+
+QPushButton {
+    background-color: #007acc; /* Dark theme accent */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+QPushButton:hover {
+    background-color: #005fa3;
+}
+
+QPushButton:pressed {
+    background-color: #004c8c;
+}
+
+QPushButton[secondary="true"] {
+    background-color: #555555;
+    color: #dddddd;
+}
+
+QPushButton[secondary="true"]:hover {
+    background-color: #666666;
+}
+
+/* Category items styling */
+QFrame.category-item {
+    background-color: #3c3c3c;
+    border-radius: 4px;
+    border: 1px solid #555555;
+    padding: 8px;
+}
+
+/* Headers */
+QLabel[header="true"] {
+    font-size: 16pt;
+    font-weight: bold;
+    color: #cccccc;
+    padding-bottom: 10px;
+}
+
+QLabel[section="true"] {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #cccccc;
+    padding: 10px 0px;
+}
+
+/* Status bar */
+QFrame#statusBar {
+    background-color: #1e1e1e; /* Darker status bar */
+    border-top: 1px solid #555555;
+    color: #cccccc;
+}
+
+QFrame#statusBar QLabel {
+    color: #cccccc; /* Ensure status bar text is light */
+}
+
+
+/* Charts styling */
+QChartView {
+    background-color: transparent;
+}
+
+/* Ensure chart text is visible in dark mode */
+QChart {
+    titleBrush: white;
+    legend.labelColor: white;
+}
+
+QAbstractAxis {
+    labelsColor: white;
+    titleBrush: white;
+}
+
+QPieSlice {
+    labelColor: white;
+}

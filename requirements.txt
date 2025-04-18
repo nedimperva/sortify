@@ -5,3 +5,4 @@ pystray>=0.19.4
 psutil>=5.9.5
 python-dateutil>=2.8.2
 PyQt6-Charts>=6.5.0  # For chart visualizations
+darkdetect>=0.8.0

@@ -200,14 +200,15 @@ class MainWindow(QMainWindow):
         self.control_frame = QFrame()
         self.control_layout = QVBoxLayout(self.control_frame)
         
-        self.toggle_button = QCheckBox("Active")
+        self.toggle_button = QCheckBox("Active") # Keep initial text simple
         self.toggle_button.stateChanged.connect(self.toggle_service)
         self.control_layout.addWidget(self.toggle_button)
-        
-        # Set the initial state of the toggle based on whether the monitor is running
-        if self.file_monitor and self.file_monitor.is_running():
-            self.toggle_button.setChecked(True)
-        
+
+        # Set the initial state and text of the toggle based on whether the monitor is running
+        is_initially_running = self.file_monitor and self.file_monitor.is_running()
+        self.toggle_button.setChecked(is_initially_running)
+        self.toggle_button.setText("Pause Monitoring" if is_initially_running else "Resume Monitoring") # Correct initial text
+
         # Appearance mode
         self.appearance_mode = QComboBox()
         self.appearance_mode.addItems(["System", "Light", "Dark"])
@@ -701,24 +702,47 @@ class MainWindow(QMainWindow):
         """Toggle the background service on/off"""
         if not self.file_monitor:
             return
-            
-        state = "Active" if self.toggle_button.isChecked() else "Paused"
-        
-        if state == "Active" and not self.file_monitor.is_running():
-            self.file_monitor.start()
-        elif state == "Paused" and self.file_monitor.is_running():
-            self.file_monitor.stop()
-            
-        self.status_label.setText(f"{state} | Last sort: {datetime.now().strftime('%H:%M:%S')}")
-    
+
+        is_checked = self.toggle_button.isChecked() # This is the NEW state after the click
+        state = "Active" if is_checked else "Paused"
+
+        if is_checked:
+            # If the button is now checked, it means we want to START/RESUME
+            if not self.file_monitor.is_running():
+                self.file_monitor.start()
+            self.toggle_button.setText("Pause Monitoring") # Set text for the active state
+        else:
+            # If the button is now unchecked, it means we want to PAUSE
+            if self.file_monitor.is_running():
+                self.file_monitor.stop()
+            self.toggle_button.setText("Resume Monitoring") # Set text for the paused state
+
+        # Update status bar
+        last_sort_time_str = "Never"
+        recent_activity = self.stats.get_recent_activity(limit=1)
+        if recent_activity:
+            last_sort_time_str = recent_activity[0]['timestamp'].strftime('%H:%M:%S')
+
+        self.status_label.setText(f"{state} | Last sort: {last_sort_time_str}")
+
+        # Update tray icon state if it exists
+        if self.tray_icon and hasattr(self.tray_icon, 'update_toggle_state'):
+            self.tray_icon.update_toggle_state(is_checked)
+
     def sort_now(self):
         """Manually trigger sorting"""
         source_folder = self.config.get("source_folder", str(Path.home() / "Downloads"))
         if Path(source_folder).exists():
-            success_count, error_count = self.sorter.sort_directory(source_folder)
+            # Use the scan_now method which handles both running and non-running states
+            success_count, error_count = self.file_monitor.scan_now()
             current_time = datetime.now().strftime('%H:%M:%S')
-            self.status_label.setText(f"Active | Last sort: {current_time} | {success_count} files sorted")
-    
+            state = "Active" if self.file_monitor.is_running() else "Paused"
+            self.status_label.setText(f"{state} | Last sort: {current_time} | {success_count} files sorted")
+            # Refresh dashboard after manual sort
+            self.refresh_dashboard()
+        else:
+             QMessageBox.warning(self, "Source Folder Not Found", f"The source folder '{source_folder}' does not exist. Please check your settings.")
+
     def save_settings(self):
         """Save application settings"""
         # Update config with values from UI
@@ -726,23 +750,55 @@ class MainWindow(QMainWindow):
         self.config["destination_folder"] = self.dest_entry.text()
         self.config["run_at_startup"] = self.startup_var.isChecked()
         self.config["show_notifications"] = self.notify_var.isChecked()
-        
+
         # Save scan schedule settings
-        self.config["scan_mode"] = "scheduled" if self.scheduled_rb.isChecked() else "regular"
+        new_scan_mode = "scheduled" if self.scheduled_rb.isChecked() else "regular"
+        scan_mode_changed = self.config.get("scan_mode", "regular") != new_scan_mode
+        self.config["scan_mode"] = new_scan_mode
         self.config["scan_when_back_online"] = self.offline_recovery_var.isChecked()
-        
+
+        # Save scheduled times from UI
+        scheduled_times = []
+        for i in range(self.time_slots_layout.count()):
+             widget = self.time_slots_layout.itemAt(i).widget()
+             if widget and hasattr(widget, 'time_str'): # Check if it's a time slot item
+                 scheduled_times.append(widget.time_str)
+        self.config["scheduled_times"] = sorted(list(set(scheduled_times))) # Ensure unique and sorted
+
         # Save config
         from sorter.utils import save_config, set_run_at_startup
         save_config(self.config)
         set_run_at_startup(self.config["run_at_startup"])
-        
-        # Restart file monitor with new settings if it's running
+
+        # Reload config in monitor and sorter to reflect changes immediately
+        self.file_monitor.config = load_config()
+        self.sorter.config = load_config()
+
+        # Restart file monitor only if necessary (mode changed or source folder changed)
+        # Or if it's running and settings affecting it were changed
+        should_restart_monitor = False
         if self.file_monitor and self.file_monitor.is_running():
+            if scan_mode_changed or self.config["source_folder"] != self.file_monitor.config.get("source_folder"):
+                 should_restart_monitor = True
+            # Add other conditions if needed, e.g., schedule times changed in scheduled mode
+
+        if should_restart_monitor:
             self.file_monitor.stop()
+            # Update monitor's internal config before restarting
+            self.file_monitor.config = self.config
             self.file_monitor.start()
-            
+            # Update toggle button state after restart
+            is_running = self.file_monitor.is_running()
+            self.toggle_button.setChecked(is_running)
+            self.toggle_button.setText("Pause Monitoring" if is_running else "Resume Monitoring")
+
+
         QMessageBox.information(self, "Settings Saved", "Your settings have been saved successfully.")
-    
+        # Refresh UI elements that depend on config
+        self.refresh_categories()
+        self.refresh_time_slots() # Ensure time slots reflect saved state
+        self.refresh_dashboard() # Update category count card
+
     def browse_source(self):
         """Browse for source folder"""
         folder = QFileDialog.getExistingDirectory(self, "Select Source Folder")
@@ -800,54 +856,28 @@ class MainWindow(QMainWindow):
         # Save the setting for persistence across app restarts
         self.config["appearance_mode"] = new_appearance_mode.lower()
         save_config(self.config)
-        
+
+        effective_theme = 'light' # Default to light
+
         if new_appearance_mode.lower() == "dark":
-            # Set dark palette
-            palette = QPalette()
-            palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
-            palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-            palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-            palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-            palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-            palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-            palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
-            QApplication.setPalette(palette)
+            effective_theme = 'dark'
         elif new_appearance_mode.lower() == "light":
-            # Reset to the light palette
-            QApplication.setPalette(QApplication.style().standardPalette())
+            effective_theme = 'light'
         else:  # System default
-            # Try to detect system theme if possible, otherwise use light
             try:
                 import darkdetect
                 if darkdetect.isDark():
-                    # Same dark palette as above
-                    palette = QPalette()
-                    palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-                    palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-                    palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
-                    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-                    palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
-                    palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-                    palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-                    palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-                    palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-                    palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-                    palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-                    palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-                    palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
-                    QApplication.setPalette(palette)
+                    effective_theme = 'dark'
                 else:
-                    QApplication.setPalette(QApplication.style().standardPalette())
+                    effective_theme = 'light'
             except ImportError:
                 # If darkdetect is not available, default to light theme
-                QApplication.setPalette(QApplication.style().standardPalette())
-    
+                effective_theme = 'light'
+                print("darkdetect library not found, defaulting to light theme for 'System' mode.")
+
+        # Apply the appropriate stylesheet
+        self.apply_stylesheet(theme=effective_theme)
+
     # Dashboard and statistics methods
     def refresh_dashboard(self):
         """Refresh the dashboard with current statistics"""
@@ -1099,7 +1129,9 @@ class MainWindow(QMainWindow):
         slot_frame = QFrame()
         slot_frame.setFrameShape(QFrame.Shape.StyledPanel)
         slot_layout = QHBoxLayout(slot_frame)
-        
+        # Store the time string on the widget for later retrieval during save
+        slot_frame.time_str = time_str
+
         # Time display
         time_label = QLabel(time_str)
         time_label.setFont(QFont("Arial", QFont.Weight.Bold))
@@ -1120,17 +1152,25 @@ class MainWindow(QMainWindow):
             self.config["scheduled_times"].remove(time_str)
             self.refresh_time_slots()
             
-    def apply_stylesheet(self):
-        """Load and apply the application stylesheet"""
-        stylesheet_path = Path(__file__).parent / "resources" / "style.qss"
-        if stylesheet_path.exists():
+    def apply_stylesheet(self, theme='light'):
+        """Load and apply the application stylesheet based on the theme"""
+        qss_file = "style.qss" if theme == 'light' else "style_dark.qss"
+        stylesheet_path = Path(__file__).parent / "resources" / qss_file
+
+        if (stylesheet_path.exists()):
             try:
                 with open(stylesheet_path, 'r') as f:
                     self.setStyleSheet(f.read())
+                print(f"Applied {theme} theme stylesheet.") # Debug print
             except Exception as e:
-                print(f"Error loading stylesheet: {e}")
-                
-        # Set object names for CSS selectors
+                print(f"Error loading stylesheet ({qss_file}): {e}")
+        else:
+            print(f"Stylesheet not found: {stylesheet_path}") # Debug print
+
+        # Set object names for CSS selectors (ensure this runs after setStyleSheet)
         self.sidebar_frame.setObjectName("sidebar")
         self.logo_label.setObjectName("logo")
         self.status_bar.setObjectName("statusBar")
+        # Re-polish to ensure styles are applied immediately
+        self.style().unpolish(QApplication.instance())
+        self.style().polish(QApplication.instance())
